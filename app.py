@@ -1,12 +1,13 @@
 import os
 import boto3
 from langchain_community.chat_models import BedrockChat
-from langchain.chains import ConversationalRetrievalChain
+from langchain.chains import RetrievalQA
 from langchain.memory import ChatMessageHistory, ConversationBufferMemory
 from langchain_community.retrievers import AmazonKnowledgeBasesRetriever
 import chainlit as cl
 from chainlit.input_widget import Select, Slider
 from typing import Optional
+from langchain.agents import Tool, AgentExecutor, initialize_agent
 
 aws_region = os.environ["AWS_REGION"]
 #aws_profile = os.environ["AWS_PROFILE"]
@@ -111,18 +112,26 @@ async def setup_agent(settings):
 
     memory = ConversationBufferMemory(
         memory_key = "chat_history",
-        output_key = "answer",
+        input_key="question",
+        #output_key = "answer",
         chat_memory = message_history,
         return_messages = True,
     )
     
-    chain = ConversationalRetrievalChain.from_llm(
-        llm,
-        chain_type = "stuff",
-        retriever = retriever,
-        memory = memory,
-        return_source_documents = True,
-        verbose = True
+    chain = RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type='stuff',
+        retriever=retriever,
+        verbose=True,
+        return_source_documents=True,
+        chain_type_kwargs={
+            "verbose": True,
+            "memory": memory
+            #"prompt": prompt,
+            #"memory": ConversationBufferMemory(
+            #    memory_key="history",
+            #    input_key="question"),
+        }
     )
 
     # Store the chain in the user session
@@ -156,13 +165,14 @@ async def main():
 async def main(message: cl.Message):
 
     # Retrieve the chain from the user session
-    chain = cl.user_session.get("chain")
+    chain = cl.user_session.get("chain") #RetrievalQA
 
     res = await chain.ainvoke(
         message.content, 
         callbacks=[cl.AsyncLangchainCallbackHandler()]
     )
-    answer = res["answer"]
+    #print(res)
+    answer = res["result"]
     source_documents = res["source_documents"]  # type: List[Document]
 
     text_elements = []  # type: List[cl.Text]
